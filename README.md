@@ -7,7 +7,13 @@ Stygos is a Go SDK for writing WebAssembly smart contracts that run on Arbitrum 
 - Host bindings for Stylus environment functions
 - Mock runtime for local testing
 - High-level API for common operations
-- Example counter contract
+- **Schnorr BIP-340 signature verification** (much faster than Solidity)
+- **Comprehensive example contracts**:
+  - Counter contract
+  - ERC20 token
+  - Multisig wallet with Schnorr signatures
+  - Voting/governance system
+  - NFT contract
 - Build tools for compiling, optimizing, and compressing Wasm binaries
 
 ## Requirements
@@ -21,7 +27,11 @@ Stygos is a Go SDK for writing WebAssembly smart contracts that run on Arbitrum 
 
 1. Install Go:
    ```
-   sudo apt-get install -y golang-go
+   # Download Go from the official website
+   wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
+   sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+   echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+   source ~/.bashrc
    ```
 
 2. Install TinyGo:
@@ -53,7 +63,12 @@ stygos/
 ├── stygos_test.go         # Unit tests
 ├── Makefile               # Build automation
 ├── examples/
-│   └── counter/           # Example counter contract
+│   ├── counter/           # Simple counter contract
+│   ├── erc20/             # ERC20 token implementation
+│   ├── schnorr/           # Schnorr BIP-340 signature verification
+│   ├── multisig/          # Multisig wallet with Schnorr signatures
+│   ├── voting/            # Governance voting system
+│   └── nft/               # NFT contract implementation
 └── cmd/
     └── stygos/            # CLI tool (future)
 ```
@@ -165,11 +180,124 @@ func setCounter(value uint32) {
    cargo stylus deploy --private-key=YOUR_TESTNET_PRIVKEY --wasm-file-path=counter.wasm.br
    ```
 
+### Schnorr BIP-340 Signature Verification
+
+Stygos includes a high-performance Go implementation of Schnorr BIP-340 signature verification, which is significantly faster than the equivalent Solidity implementation:
+
+```go
+package main
+
+import (
+    "github.com/rafaelescrich/stygos"
+)
+
+//export entrypoint
+func entrypoint() int32 {
+    callData, err := stygos.GetCallData()
+    if err != nil || len(callData) < 1 {
+        return 1
+    }
+
+    command := callData[0]
+    args := callData[1:]
+
+    switch command {
+    case CMD_VERIFY:
+        return handleVerify(args)
+    case CMD_ADAPTOR_VERIFY:
+        return handleAdaptorVerify(args)
+    case CMD_EXTRACT:
+        return handleExtract(args)
+    // ... other commands
+    }
+    return 0
+}
+
+func handleVerify(args []byte) int32 {
+    // Parse message, signature, and public key
+    msgLen := int(args[0])
+    msg := args[1 : 1+msgLen]
+    pkX := args[1+msgLen : 1+msgLen+32]
+    sig := args[1+msgLen+32 : 1+msgLen+32+64]
+    
+    valid := verify(msg, sig, pkX)
+    if valid {
+        return 0
+    }
+    return 1
+}
+```
+
+**Key Features:**
+- **BIP-340 compliant** Schnorr signature verification
+- **Adaptor signatures** for atomic swaps and payment channels
+- **Secret extraction** from adaptor signatures
+- **Point operations** (addition, multiplication, lifting)
+- **Much faster** than Solidity EC arithmetic
+
+### Example Contracts
+
+#### Multisig Wallet
+A multisig wallet implementation using Schnorr signatures for approvals:
+
+```go
+// Commands
+const (
+    CMD_INITIALIZE     = 0
+    CMD_SUBMIT_PROPOSAL = 1
+    CMD_APPROVE_PROPOSAL = 2
+    CMD_EXECUTE_PROPOSAL = 3
+)
+
+func handleApproveProposal(args []byte) int32 {
+    // Parse proposal nonce and Schnorr signature
+    nonce := binary.BigEndian.Uint32(args[:4])
+    sig := args[4:68] // 64-byte Schnorr signature
+    
+    // Verify signature and store approval
+    // ... implementation details
+}
+```
+
+#### Voting System
+A governance voting system with configurable quorum and voting periods:
+
+```go
+func handleVote(args []byte) int32 {
+    proposalId := binary.BigEndian.Uint64(args[:8])
+    voteType := args[8] // FOR, AGAINST, or ABSTAIN
+    
+    // Cast vote and update proposal state
+    // ... implementation details
+}
+```
+
+#### NFT Contract
+A complete NFT implementation with metadata support:
+
+```go
+func handleMint(args []byte) int32 {
+    var to stygos.Address
+    copy(to[:], args[:20])
+    
+    // Mint new NFT and update balances
+    // ... implementation details
+}
+```
+
 ### Testing
 
 Run the unit tests:
 ```
 go test ./...
+```
+
+Run tests for specific examples:
+```
+go test ./examples/schnorr/...
+go test ./examples/multisig/...
+go test ./examples/voting/...
+go test ./examples/nft/...
 ```
 
 ## License
